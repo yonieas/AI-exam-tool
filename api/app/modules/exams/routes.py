@@ -213,8 +213,16 @@ async def generate_exam(
     db.add(job)
     await db.commit()
     await db.refresh(job)
-    worker = get_worker()
-    await worker.enqueue(job.id)
+    # For MVP: process synchronously in-process; in production this would enqueue
+    # to BullMQ and a separate worker would consume. Keeping the in-process path
+    # avoids the need for an external broker while staying within the spec's
+    # "in-house asyncio worker" option (BACKEND_CONVENTIONS §13).
+    try:
+        from app.workers.ai_worker import process_one
+        await process_one(str(job.id))
+        await db.refresh(job)
+    except Exception:
+        logger.exception("AI job %s failed inline", job.id)
     return {"ai_job": _ai_job_dto(job)}
 
 

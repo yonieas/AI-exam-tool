@@ -31,9 +31,9 @@ class MockProvider(AIProvider):
         # Heuristic: detect which schema the caller is asking for by schema id/title
         schema_id = (schema.get("$id") or schema.get("title") or "").lower()
         if "questionset" in schema_id or "question" in schema_id:
-            return self._questions(content, schema)
+            return self._questions(system, content, schema)
         if "gradingresult" in schema_id or "responses" in schema_id:
-            return self._grading(content, schema)
+            return self._grading(system, content, schema)
         # Generic: wrap an echo so callers still get a structured response
         return StructuredResult(
             data={"echo": "unknown_schema", "schema_keys": list(schema.keys())},
@@ -45,13 +45,12 @@ class MockProvider(AIProvider):
             stop_reason="end_turn",
         )
 
-    def _questions(self, content: list[ContentBlock], schema: dict) -> StructuredResult:
+    def _questions(self, system: str, content: list[ContentBlock], schema: dict) -> StructuredResult:
         # Parse requested counts from system prompt when present.
         total = 5
-        mcq_n = 3
-        essay_n = 2
+        mcq_n = 0
+        essay_n = 0
         try:
-            # The system prompt embeds numbers like "Generate {total_count} questions: {mcq_count} multiple-choice and {essay_count} essay"
             import re
             m_total = re.search(r"Generate\s+(\d+)", system)
             m_mcq = re.search(r"(\d+)\s+multiple-choice", system)
@@ -62,8 +61,15 @@ class MockProvider(AIProvider):
                 mcq_n = int(m_mcq.group(1))
             if m_essay:
                 essay_n = int(m_essay.group(1))
+            # If only "total" is set and counts are missing, split evenly
+            if total and mcq_n == 0 and essay_n == 0:
+                mcq_n = total
+                essay_n = 0
         except Exception:
             pass
+        # Cap to total
+        if mcq_n + essay_n > total:
+            essay_n = max(0, total - mcq_n)
 
         questions: list[dict] = []
         pos = 1
@@ -110,7 +116,7 @@ class MockProvider(AIProvider):
             stop_reason="end_turn",
         )
 
-    def _grading(self, content: list[ContentBlock], schema: dict) -> StructuredResult:
+    def _grading(self, system: str, content: list[ContentBlock], schema: dict) -> StructuredResult:
         # Find referenced questions in the system prompt
         import re
         # The system prompt contains question blocks: "(Q1) ... max=N"

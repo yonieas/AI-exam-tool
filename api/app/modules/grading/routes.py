@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import csv
 import io
+import logging
 import uuid
 from datetime import datetime
 from decimal import Decimal
@@ -13,6 +14,8 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger("grading")
 
 from app.db import get_db
 from app.deps import CurrentUser
@@ -224,8 +227,12 @@ async def register_item(
     r.status = "grading"
     await db.commit()
     await db.refresh(job)
-    worker = get_worker()
-    await worker.enqueue(job.id)
+    try:
+        from app.workers.ai_worker import process_one
+        await process_one(str(job.id))
+        await db.refresh(job)
+    except Exception:
+        logger.exception("AI job %s failed inline", job.id)
     return {"ai_job": _ai_job_dto(job)}
 
 

@@ -28,7 +28,6 @@ class MinioClient:
         await asyncio.to_thread(_ensure)
 
     def presigned_put(self, key: str, expires: timedelta = timedelta(minutes=10)) -> str:
-        from minio import PutObjectPresignedCookie,  presigned_put_object
         # Use URL-style presign
         url = self._client.presigned_put_object(self.bucket, key, expires=expires)
         # The minio SDK returns an internal-host URL; rewrite to public host if needed.

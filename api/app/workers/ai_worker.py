@@ -8,6 +8,7 @@ is shaped so we can swap to BullMQ later without changing call sites.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import traceback
 from datetime import datetime
@@ -23,6 +24,7 @@ from app.ai.prompts import question_generate as gen_prompts
 from app.ai.provider import ContentBlock
 from app.ai.structured import clamp_confidence, clamp_score, looks_like_handwriting_issue
 from app.config import get_settings
+from app.db import SessionLocal
 from app.models.ai_job import AIJob
 from app.models.exam import Exam
 from app.models.grading import GradingItem, GradingItemResponse
@@ -189,9 +191,6 @@ class AIJobWorker:
         item = (await session.execute(select(GradingItem).where(GradingItem.id == item_id))).scalar_one_or_none()
         if not item:
             raise RuntimeError(f"GradingItem {item_id} not found")
-        # Get questions and benchmark
-        exam = (await session.execute(select(Exam).where(Exam.id == (await session.execute(select(GradingRun := __import__('app.models.grading', fromlist=['GradingRun']).GradingRun).where(__import__('app.models.grading', fromlist=['GradingRun']).GradingRun.id == item.grading_run_id)))).scalar_one_or_none()))
-        # The above is overly complex; do it cleanly:
         from app.models.grading import GradingRun
         run = (await session.execute(select(GradingRun).where(GradingRun.id == item.grading_run_id))).scalar_one_or_none()
         if not run:
@@ -315,3 +314,11 @@ def get_worker() -> AIJobWorker:
     if _worker_singleton is None:
         _worker_singleton = AIJobWorker()
     return _worker_singleton
+
+
+async def process_one(ai_job_id: str) -> None:
+    """Synchronously process a job in the current event loop. Used by tests and as a fallback."""
+    w = get_worker()
+    if w._session_factory is None:
+        w.set_session_factory(SessionLocal)
+    await w._process(ai_job_id)

@@ -36,7 +36,12 @@ async def lifespan(app: FastAPI):
     # Worker
     worker = get_worker()
     worker.set_session_factory(SessionLocal)
-    await worker.start()
+    # Don't start the background loop in test mode (TestClient shares a single event loop
+    # and we process jobs inline from the route). Real deployments run a separate
+    # ai-worker process (per docs/DEPLOYMENT.md) that owns the queue.
+    import os as _os
+    if _os.environ.get("EXAMTOOL_WORKER_DISABLED") != "1":
+        await worker.start()
     app.state.worker = worker
 
     # Create tables if not yet (development convenience)
