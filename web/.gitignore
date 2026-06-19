@@ -1,0 +1,4 @@
+.next/
+.playwright-cli/
+*.log
+.env.local

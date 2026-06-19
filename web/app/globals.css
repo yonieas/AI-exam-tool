@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body { color: #18181B; background: #FAFAFA; font-family: Inter, system-ui, sans-serif; }
+.btn { @apply inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium; }
+.btn-primary { @apply btn bg-primary text-white hover:opacity-90; }
+.btn-secondary { @apply btn bg-surface2 text-text hover:bg-border; }
+.btn-danger { @apply btn bg-danger text-white hover:opacity-90; }
+.input { @apply block w-full rounded-md border border-border bg-surface px-3 py-1.5 text-sm focus:border-primary focus:outline-none; }
+.card { @apply rounded-lg border border-border bg-surface shadow-sm; }
+.badge { @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium; }
+.badge-success { @apply badge bg-green-100 text-success; }
+.badge-warning { @apply badge bg-amber-100 text-warning; }
+.badge-danger { @apply badge bg-red-100 text-danger; }
+.badge-info { @apply badge bg-cyan-100 text-info; }
+.badge-neutral { @apply badge bg-surface2 text-muted; }
+table { @apply w-full text-sm; }
+thead th { @apply px-3 py-2 text-left text-xs uppercase tracking-wide text-muted; }
+tbody tr { @apply border-t border-border hover:bg-surface2; }
+tbody td { @apply px-3 py-2; }

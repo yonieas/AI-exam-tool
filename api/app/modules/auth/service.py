@@ -83,16 +83,21 @@ class AuthService:
             # Dev: accept any opaque token
             raise UnauthenticatedError("Refresh token store unavailable.")
         digest = hashlib.sha256(token.encode()).hexdigest()
-        raw = await r.get(f"refresh:{digest}")
+        # Use a brief race-protection window: GETDEL atomically reads and deletes.
+        # If a duplicate request races, the second GETDEL will get None.
+        try:
+            raw = await r.execute_command("GETDEL", f"refresh:{digest}")
+        except Exception:
+            # Fallback for older redis versions: GET + DEL with race
+            raw = await r.get(f"refresh:{digest}")
+            if raw:
+                await r.delete(f"refresh:{digest}")
         if not raw:
-            raise UnauthenticatedError("Invalid refresh token.")
+            # Either invalid OR already rotated. The browser may have re-sent the
+            # same cookie (e.g. React Strict Mode double-effect). Treat as
+            # short-circuit: do not revoke the family, just signal re-auth.
+            raise UnauthenticatedError("Refresh token invalid or already used.")
         family, uid, _exp = raw.split("|")
-        # Reuse detection: delete the old token; if it was already deleted, the family is compromised.
-        deleted = await r.delete(f"refresh:{digest}")
-        if not deleted:
-            # already rotated out — revoke the whole family
-            await r.delete(f"refresh_family:{family}")
-            raise UnauthenticatedError("Refresh token reuse detected. Please re-authenticate.")
         new_token = await self.mint_refresh_token(UUID(uid))
         return UUID(uid), new_token
 
