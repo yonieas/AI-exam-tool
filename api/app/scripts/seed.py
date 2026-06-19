@@ -19,7 +19,7 @@ from app.models.subject import Subject
 from app.models.user import User
 
 
-DEMO_EMAIL = "teacher@demo.local"
+DEMO_EMAIL = "teacher@example.com"
 DEMO_NAME = "Ms. Alvarez"
 
 SUBJECTS = [
