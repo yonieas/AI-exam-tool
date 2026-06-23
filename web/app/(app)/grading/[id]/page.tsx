@@ -2,10 +2,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
 import { useState } from "react";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, apiDownload } from "@/lib/api";
 import { EmptyState, StatusBadge } from "@/components/ui";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
 export default function GradingDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -51,8 +49,17 @@ export default function GradingDetailPage() {
     } catch (e: any) { alert(e.message); }
   }
 
-  function downloadCsv() {
-    window.location.href = `${API_BASE}/api/v1/grading-runs/${id}/results.csv`;
+  async function downloadCsv() {
+    try {
+      const r = await apiDownload(`/api/v1/grading-runs/${id}/results.csv`);
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${run.data?.title || "results"}_${id}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) { alert(e.message || "Download failed"); }
   }
 
   const flagged = items.data?.data?.filter((it: any) => it.flagged).length ?? 0;

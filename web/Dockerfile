@@ -3,6 +3,10 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci --no-audit --no-fund
 COPY . .
+# BACKEND_URL is the server-side rewrite target — must be set at build time
+# because Next.js evaluates next.config.js during `npm run build`.
+ARG BACKEND_URL=http://api:8000
+ENV BACKEND_URL=${BACKEND_URL}
 RUN npm run build
 
 FROM node:22-alpine AS runner

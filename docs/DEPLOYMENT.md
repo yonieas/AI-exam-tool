@@ -114,10 +114,25 @@ services:
       context: ./web
       dockerfile: Dockerfile
     environment:
-      NEXT_PUBLIC_API_BASE_URL: ${API_BASE_URL}
+      - BACKEND_URL=http://api:8000
     ports: ["3000:3000"]
     depends_on:
       api: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARED_TUNNEL_TOKEN}
+    depends_on: [web]
+    restart: unless-stopped
+    volumes:
+      - ./cloudflared:/etc/cloudflared
 
 volumes:
   pgdata: {}
@@ -169,8 +184,13 @@ MINIMAX_MODEL=MiniMax-M2.7
 MINIMAX_CHEAP_MODEL=MiniMax-M2.7
 
 # Frontend
-API_BASE_URL=http://localhost:8000
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+# BACKEND_URL is the server-side rewrite target (web → api on the Docker network).
+# It is evaluated at build time (ARG in Dockerfile) — not at runtime.
+# The client never sees this; all browser fetches use relative URLs (/api/v1/...).
+BACKEND_URL=http://api:8000
+
+# For local dev without Docker, Next.js falls back to localhost:8000 in the rewrite.
+# No NEXT_PUBLIC_* env var is needed — apiFetch() uses relative paths.
 ```
 
 > **No `school_id`, no Stripe, no payment-gateway keys.** The runtime DB role is `examtool_app` with **no `BYPASSRLS`** (multi-tenancy is application-layer `owner_id` filtering).
@@ -194,7 +214,69 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 
 ---
 
-## 6. Production hardening checklist
+## 6. API proxy & rewrite architecture
+
+### 6.1 Why the rewrite exists
+
+The browser always talks to the **Next.js server**, never directly to the API. This avoids CORS entirely
+and keeps the FastAPI container private (no internet-accessible port).
+
+```
+Browser                     Next.js server              FastAPI
+fetch("/api/v1/...")  ───→  rewrite proxy  ──────────→  api:8000 (Docker network)
+                            (server-side)
+```
+
+`web/lib/api.ts` uses **relative URLs** (`API_BASE = ""`), so every `fetch("/api/v1/...")` hits the
+same origin. The Next.js rewrite in `next.config.js` proxies `/api/:path*` → `http://api:8000/api/:path*`.
+
+| Concern | Solution |
+|---------|----------|
+| **CORS** | None needed — same-origin requests |
+| **Loopback block** | No `localhost:8000` in client JS — browsers never see the backend address |
+| **API exposure** | FastAPI port (8000) is only reachable inside Docker; never mapped to the host in production |
+| **Auth** | Cookies (including `refresh`) are same-origin → sent automatically |
+
+### 6.2 Build-time consideration
+
+Next.js evaluates `next.config.js` during `docker build`, so the rewrite destination is **baked into
+the image**. The Dockerfile passes `ARG BACKEND_URL=http://api:8000` so it resolves correctly.
+If you ever deploy the web container on a different host from the API, you must rebuild with the new
+`BACKEND_URL`.
+
+### 6.3 Cloudflare Tunnel
+
+When exposing the app via Cloudflare Tunnel, the only public hostname you need is the web service:
+
+```
+Cloudflare Dashboard → Zero Trust → Networks → Tunnels → <your-tunnel> → Public Hostname
+
+  Subdomain:   exam-tool
+  Domain:      yourdomain.com
+  Type:        HTTP
+  URL:         web:3000          ← Docker service name + Next.js port (internal)
+```
+
+The API stays private — all browser requests flow through the rewrite. There is **no separate
+public hostname for the API**.
+
+### 6.4 Container diagram
+
+```
+┌─────────────────────────────────────────────────┐
+│ Docker network: ai-exam-tool_default             │
+│                                                  │
+│  cloudflared ──→ web:3000 ──→ api:8000          │
+│  (tunnel)       (Next.js)    (FastAPI)           │
+│                                  │               │
+│                     ┌────────────┼────────────┐  │
+│                     │            │            │  │
+│                  postgres     redis       minio  │
+│                  :5432        :6379       :9000  │
+└─────────────────────────────────────────────────┘
+```
+
+## 7. Production hardening checklist
 
 - [ ] TLS termination at the edge (nginx / CloudFront).
 - [ ] All secrets in a vault (AWS Secrets Manager / HashiCorp Vault).

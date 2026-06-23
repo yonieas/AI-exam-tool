@@ -2,10 +2,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, apiDownload } from "@/lib/api";
 import { EmptyState, StatusBadge } from "@/components/ui";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
 export default function ExamDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -15,27 +13,29 @@ export default function ExamDetailPage() {
   const files = useQuery({ queryKey: ["exam", id, "files"], queryFn: () => apiFetch<any>(`/api/v1/exams/${id}/files`) });
 
   async function downloadPdf(kind: "questions" | "answers") {
-    const r = await fetch(`${API_BASE}/api/v1/exams/${id}/pdf/${kind}`, { credentials: "include" });
-    if (!r.ok) { alert("Download failed"); return; }
-    const blob = await r.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${exam.data?.title}_${kind}.pdf`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const r = await apiDownload(`/api/v1/exams/${id}/pdf/${kind}`);
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${exam.data?.title}_${kind}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) { alert(e.message || "Download failed"); }
   }
 
   async function downloadFile(file: any) {
-    const r = await fetch(`${API_BASE}/api/v1/exams/${id}/files/${file.id}/download`, { credentials: "include" });
-    if (!r.ok) { alert("Download failed"); return; }
-    const blob = await r.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = file.original_name;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const r = await apiDownload(`/api/v1/exams/${id}/files/${file.id}/download`);
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = file.original_name;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) { alert(e.message || "Download failed"); }
   }
 
   return (

@@ -1,7 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+// Use relative URLs so all API calls go through the Next.js server-side rewrite proxy.
+// This avoids CORS/loopback issues when the app is accessed via a public URL (e.g. Cloudflare tunnel).
+const API_BASE = "";
 
 let accessToken: string | null = null;
 let currentUser: any = null;
@@ -59,11 +61,34 @@ async function refresh(): Promise<string | null> {
   return data.access_token;
 }
 
+export async function apiDownload(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers: Record<string, string> = { ...(init.headers as Record<string, string>) };
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  let res = await fetch(`${API_BASE}${path}`, { ...init, headers, credentials: "include" });
+  if (res.status === 401) {
+    const t = await refresh();
+    if (t) {
+      headers.Authorization = `Bearer ${t}`;
+      res = await fetch(`${API_BASE}${path}`, { ...init, headers, credentials: "include" });
+    } else {
+      setAccessToken(null);
+      setCurrentUser(null);
+    }
+  }
+  if (!res.ok) {
+    let body: any = {};
+    try { body = await res.json(); } catch { body = { detail: res.statusText }; }
+    throw new ProblemError(res.status, body);
+  }
+  return res;
+}
+
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(init.headers as Record<string, string>),
-  };
+  // Don't set Content-Type for FormData — browser auto-sets multipart boundary
+  const isFormData = init.body instanceof FormData;
+  const headers: Record<string, string> = isFormData
+    ? { ...(init.headers as Record<string, string>) }
+    : { "Content-Type": "application/json", ...(init.headers as Record<string, string>) };
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
   let res = await fetch(`${API_BASE}${path}`, { ...init, headers, credentials: "include" });
   if (res.status === 401) {
