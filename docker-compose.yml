@@ -1,7 +1,5 @@
 # Dev / staging / prod compose for Teacher AI Exam Tool
 # See docs/DEPLOYMENT.md for full topology and env vars.
-version: "3.9"
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -11,7 +9,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-examtool}
     volumes:
       - pgdata:/var/lib/postgresql/data
-    ports: ["5432:5432"]
+    ports: ["5433:5432"]
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "examtool"]
       interval: 5s
@@ -29,6 +27,7 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-examtool}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-examtool123}
+      MINIO_SERVER_URL: http://localhost:9000
     volumes:
       - miniodata:/data
     ports:
@@ -49,6 +48,8 @@ services:
       redis: { condition: service_started }
       minio: { condition: service_healthy }
     ports: ["8000:8000"]
+    extra_hosts:
+      - "localhost:host-gateway"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/readyz"]
       interval: 10s
@@ -69,10 +70,28 @@ services:
       context: ./web
       dockerfile: Dockerfile
     environment:
-      NEXT_PUBLIC_API_BASE_URL: ${API_BASE_URL:-http://localhost:8000}
-    ports: ["3000:3000"]
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+      - BACKEND_URL=http://api:8000
+    ports: ["3002:3000"]
     depends_on:
       api: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: exam-cloudflared
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARED_TUNNEL_TOKEN}
+    depends_on:
+      - web
+    restart: unless-stopped
+    volumes:
+      - ./cloudflared:/etc/cloudflared
 
 volumes:
   pgdata: {}
