@@ -151,7 +151,7 @@ class AuthService:
             value=token,
             httponly=True,
             secure=self.settings.cookie_secure,
-            samesite="lax",
+            samesite="strict",
             max_age=self.settings.jwt_refresh_ttl_seconds,
             path="/api/v1/auth",
             domain=self.settings.cookie_domain or None,
