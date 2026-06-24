@@ -163,10 +163,51 @@ class MockProvider(AIProvider):
         )
 
 
-def get_provider() -> AIProvider:
+def _build_provider() -> AIProvider:
+    """Construct the configured adapter (or router of adapters).
+
+    The router is itself an AIProvider, so call sites are unchanged.
+    """
     from app.config import get_settings
+    from app.ai.policies import get_preset
+    from app.ai.registry import AIProviderRegistry
+    from app.ai.router import AIProviderRouter, RoutingPolicy
+
     s = get_settings()
+    registry = AIProviderRegistry()
     if s.ai_provider == "mock":
-        return MockProvider()
-    from app.ai.minimax_adapter import MiniMaxProvider
-    return MiniMaxProvider()
+        registry.register("mock", MockProvider())
+    if s.ai_provider == "minimax":
+        from app.ai.minimax_adapter import MiniMaxProvider
+        registry.register("minimax", MiniMaxProvider())
+    if s.ai_provider not in ("mock", "minimax"):
+        # Unknown value — keep current behavior: no adapters registered → clear error
+        pass
+
+    preset = get_preset(s.ai_provider_policy)
+    if preset is not None:
+        policy = preset
+    else:
+        # single_provider — the configured AI_PROVIDER is the only adapter.
+        # Forward-compat: if AI_PROVIDER=anthropic and no preset uses it, the
+        # router will raise a clear error at first call.
+        policy = RoutingPolicy(name="single_provider", adapters=(s.ai_provider,))
+
+    return AIProviderRouter(registry, policy)
+
+
+_PROVIDER_SINGLETON: AIProvider | None = None
+
+
+def get_provider() -> AIProvider:
+    """Returns a process-singleton AIProvider (router or single adapter)."""
+    global _PROVIDER_SINGLETON
+    if _PROVIDER_SINGLETON is None:
+        _PROVIDER_SINGLETON = _build_provider()
+    return _PROVIDER_SINGLETON
+
+
+def reset_provider_singleton() -> None:
+    """Test helper: clear the cached provider so a new build runs."""
+    global _PROVIDER_SINGLETON
+    _PROVIDER_SINGLETON = None
