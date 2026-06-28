@@ -39,7 +39,8 @@ class Settings(BaseSettings):
     dev_login_enabled: bool = True  # dev-only email login
 
     # AI
-    ai_provider: Literal["minimax", "mock"] = "mock"
+    ai_provider: Literal["minimax", "mock", "anthropic"] = "mock"
+    ai_provider_policy: str = "single_provider"  # 'single_provider' | 'cascade_with_fallback'
     minimax_api_key: str = ""
     minimax_base_url: str = "https://api.minimax.io/v1"
     minimax_model: str = "MiniMax-M2.7"

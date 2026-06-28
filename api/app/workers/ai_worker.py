@@ -183,7 +183,9 @@ class AIJobWorker:
         job.total_tokens_output = result.tokens_out
         job.cost_usd_micro = result.cost_micro_usd
         job.model = result.model
-        job.ai_provider = provider.name
+        # If provider is a router, record the actual underlying adapter; otherwise its own name
+        actual_provider = getattr(provider, "last_used_provider", None) or provider.name
+        job.ai_provider = actual_provider
         await session.flush()
 
     async def _run_grading(self, session: AsyncSession, job: AIJob) -> None:
@@ -302,7 +304,8 @@ class AIJobWorker:
         job.total_tokens_output = result.tokens_out
         job.cost_usd_micro = result.cost_micro_usd
         job.model = result.model
-        job.ai_provider = provider.name
+        actual_provider = getattr(provider, "last_used_provider", None) or provider.name
+        job.ai_provider = actual_provider
         await session.flush()
 
 
